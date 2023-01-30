@@ -28,7 +28,7 @@ import ObjectiveC
 
 /**
  Toast is a Swift extension that adds toast notifications to the `UIView` object class.
- It is intended to be simple, lightweight, and easy to use. Most toast notifications 
+ It is intended to be simple, lightweight, and easy to use. Most toast notifications
  can be triggered with a single line of code.
  
  The `makeToast` methods create a new view and then display it as toast.
@@ -382,6 +382,12 @@ public extension UIView {
     // MARK: - Events
     
     @objc
+    private func handleCloseButtonTapped(_ button: UIButton) {
+        guard let toast = button.superview else { return }
+        hideToast(toast, fromTap: true)
+    }
+    
+    @objc
     private func handleToastTapped(_ recognizer: UITapGestureRecognizer) {
         guard let toast = recognizer.view else { return }
         hideToast(toast, fromTap: true)
@@ -420,6 +426,9 @@ public extension UIView {
         var messageLabel: UILabel?
         var titleLabel: UILabel?
         var imageView: UIImageView?
+        var closeButton: UIButton?
+        
+        let maxWidth = bounds.size.width - 2 * style.xOffset
         
         let wrapperView = UIView()
         wrapperView.backgroundColor = style.backgroundColor
@@ -439,15 +448,22 @@ public extension UIView {
             imageView?.frame = CGRect(x: style.horizontalPadding, y: style.verticalPadding, width: style.imageSize.width, height: style.imageSize.height)
         }
         
-        var imageRect = CGRect.zero
+        let imageRect = imageView?.frame ?? .zero
         
-        if let imageView = imageView {
-            imageRect.origin.x = style.horizontalPadding
-            imageRect.origin.y = style.verticalPadding
-            imageRect.size.width = imageView.bounds.size.width
-            imageRect.size.height = imageView.bounds.size.height
+        if let closeButtonImage = style.closeButtonImage {
+            closeButton = UIButton()
+            closeButton?.setImage(closeButtonImage, for: .normal)
+            closeButton?.addTarget(self,
+                                   action: #selector(UIView.handleCloseButtonTapped(_:)),
+                                   for: .touchUpInside)
+            closeButton?.contentMode = .center
+            closeButton?.frame = CGRect(x: maxWidth - style.horizontalPadding - style.imageSize.width, y: style.verticalPadding, width: style.imageSize.width, height: style.imageSize.height)
         }
-
+        
+        let closeButtonRect = closeButton?.frame ?? .zero
+        let maxLabelSize = CGSize(width: maxWidth - imageRect.size.width - closeButtonRect.size.width - 2 * style.horizontalLabelPadding - style.horizontalPadding,
+                                  height: bounds.size.height * style.maxHeightPercentage)
+        
         if let title = title {
             titleLabel = UILabel()
             titleLabel?.numberOfLines = style.titleNumberOfLines
@@ -458,8 +474,7 @@ public extension UIView {
             titleLabel?.backgroundColor = UIColor.clear
             titleLabel?.text = title;
             
-            let maxTitleSize = CGSize(width: (self.bounds.size.width * style.maxWidthPercentage) - imageRect.size.width, height: self.bounds.size.height * style.maxHeightPercentage)
-            let titleSize = titleLabel?.sizeThatFits(maxTitleSize)
+            let titleSize = titleLabel?.sizeThatFits(maxLabelSize)
             if let titleSize = titleSize {
                 titleLabel?.frame = CGRect(x: 0.0, y: 0.0, width: titleSize.width, height: titleSize.height)
             }
@@ -475,11 +490,10 @@ public extension UIView {
             messageLabel?.textColor = style.messageColor
             messageLabel?.backgroundColor = UIColor.clear
             
-            let maxMessageSize = CGSize(width: (self.bounds.size.width * style.maxWidthPercentage) - imageRect.size.width, height: self.bounds.size.height * style.maxHeightPercentage)
-            let messageSize = messageLabel?.sizeThatFits(maxMessageSize)
+            let messageSize = messageLabel?.sizeThatFits(maxLabelSize)
             if let messageSize = messageSize {
-                let actualWidth = min(messageSize.width, maxMessageSize.width)
-                let actualHeight = min(messageSize.height, maxMessageSize.height)
+                let actualWidth = min(messageSize.width, maxLabelSize.width)
+                let actualHeight = min(messageSize.height, maxLabelSize.height)
                 messageLabel?.frame = CGRect(x: 0.0, y: 0.0, width: actualWidth, height: actualHeight)
             }
         }
@@ -487,7 +501,7 @@ public extension UIView {
         var titleRect = CGRect.zero
         
         if let titleLabel = titleLabel {
-            titleRect.origin.x = imageRect.origin.x + imageRect.size.width + style.horizontalPadding
+            titleRect.origin.x = CGRectGetMaxX(imageRect) + style.horizontalLabelPadding
             titleRect.origin.y = style.verticalPadding
             titleRect.size.width = titleLabel.bounds.size.width
             titleRect.size.height = titleLabel.bounds.size.height
@@ -496,33 +510,39 @@ public extension UIView {
         var messageRect = CGRect.zero
         
         if let messageLabel = messageLabel {
-            messageRect.origin.x = imageRect.origin.x + imageRect.size.width + style.horizontalPadding
-            messageRect.origin.y = titleRect.origin.y + titleRect.size.height + style.verticalPadding
+            messageRect.origin.x = CGRectGetMaxX(imageRect) + style.horizontalLabelPadding
+            messageRect.origin.y = CGRectGetMaxY(titleRect) + style.verticalLabelPadding
             messageRect.size.width = messageLabel.bounds.size.width
             messageRect.size.height = messageLabel.bounds.size.height
         }
         
         let longerWidth = max(titleRect.size.width, messageRect.size.width)
-        let longerX = max(titleRect.origin.x, messageRect.origin.x)
-        let wrapperWidth = max((imageRect.size.width + (style.horizontalPadding * 2.0)), (longerX + longerWidth + style.horizontalPadding))
-        let wrapperHeight = max((messageRect.origin.y + messageRect.size.height + style.verticalPadding), (imageRect.size.height + (style.verticalPadding * 2.0)))
+        let wrapperWidth = maxWidth
+        let wrapperHeight = max(CGRectGetMaxY(messageRect), CGRectGetMaxY(imageRect)) + style.verticalPadding
         
         wrapperView.frame = CGRect(x: 0.0, y: 0.0, width: wrapperWidth, height: wrapperHeight)
         
         if let titleLabel = titleLabel {
             titleRect.size.width = longerWidth
+            titleRect.size.height = message == nil ? wrapperHeight - style.verticalPadding * 2.0 : titleRect.size.height
             titleLabel.frame = titleRect
             wrapperView.addSubview(titleLabel)
         }
         
         if let messageLabel = messageLabel {
             messageRect.size.width = longerWidth
+            messageRect.size.height = title == nil ? wrapperHeight - style.verticalPadding * 2.0 : messageRect.size.height
+            messageRect.origin.y += title == nil ? style.verticalPadding : 0
             messageLabel.frame = messageRect
             wrapperView.addSubview(messageLabel)
         }
         
         if let imageView = imageView {
             wrapperView.addSubview(imageView)
+        }
+        
+        if let closeButton = closeButton {
+            wrapperView.addSubview(closeButton)
         }
         
         return wrapperView
@@ -562,14 +582,9 @@ public struct ToastStyle {
     public var messageColor: UIColor = .white
     
     /**
-     A percentage value from 0.0 to 1.0, representing the maximum width of the toast
-     view relative to it's superview. Default is 0.8 (80% of the superview's width).
+     A toast x offset from the superview bounds. Default is 10.
     */
-    public var maxWidthPercentage: CGFloat = 0.8 {
-        didSet {
-            maxWidthPercentage = max(min(maxWidthPercentage, 1.0), 0.0)
-        }
-    }
+    public var xOffset: CGFloat = 10.0
     
     /**
      A percentage value from 0.0 to 1.0, representing the maximum height of the toast
@@ -580,6 +595,20 @@ public struct ToastStyle {
             maxHeightPercentage = max(min(maxHeightPercentage, 1.0), 0.0)
         }
     }
+    
+    /**
+     The spacing from the horizontal edge of the image to the title and message.
+     Default is 10.0.
+     
+    */
+    public var horizontalLabelPadding: CGFloat = 10.0
+    
+    /**
+     The spacing from the vertical edge of the title to the message.
+     Default is 10.0.
+     
+    */
+    public var verticalLabelPadding: CGFloat = 10.0
     
     /**
      The spacing from the horizontal edge of the toast view to the content. When an image
@@ -664,6 +693,7 @@ public struct ToastStyle {
     
     /**
      The image size. The default is 80 x 80.
+     Note: also used for close button if it exists.
     */
     public var imageSize = CGSize(width: 80.0, height: 80.0)
     
@@ -687,6 +717,11 @@ public struct ToastStyle {
      Activity background color. Default is `.black` at 80% opacity.
      */
     public var activityBackgroundColor: UIColor = UIColor.black.withAlphaComponent(0.8)
+    
+    /**
+     Set close button image if you want to hide the Toast with button tap.
+     */
+    public var closeButtonImage: UIImage?
     
 }
 
